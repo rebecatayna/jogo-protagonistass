@@ -42,19 +42,32 @@
         
         <canvas id="gameCanvas" class="block"></canvas>
         
-        <!-- Controles Móveis (Touch) -->
-        <div id="mobile-controls" class="absolute bottom-0 left-0 right-0 p-4 flex justify-between z-40 hidden">
-            <button id="left-button" class="bg-gray-800/80 text-white p-4 rounded-full text-4xl shadow-2xl w-20 h-20 flex items-center justify-center transition duration-150 hover:bg-gray-700 active:bg-gray-900 touch-action-manipulation">
-                &larr;
-            </button>
-            <button id="right-button" class="bg-gray-800/80 text-white p-4 rounded-full text-4xl shadow-2xl w-20 h-20 flex items-center justify-center transition duration-150 hover:bg-gray-700 active:bg-gray-900 touch-action-manipulation">
-                &rarr;
-            </button>
+        <!-- Controles Móveis (Touch) - Layout com D-Pad à Esquerda e Ação à Direita -->
+        <div id="mobile-controls" class="absolute bottom-0 left-0 right-0 p-6 flex justify-between items-center z-40 hidden">
+            <!-- D-Pad (Esquerda/Direita) -->
+            <div class="flex space-x-4">
+                <button id="left-button" class="bg-gray-800/80 text-white p-4 rounded-full text-4xl shadow-2xl w-20 h-20 flex items-center justify-center transition duration-150 hover:bg-gray-700 active:bg-gray-900 touch-action-manipulation">
+                    &larr;
+                </button>
+                <button id="right-button" class="bg-gray-800/80 text-white p-4 rounded-full text-4xl shadow-2xl w-20 h-20 flex items-center justify-center transition duration-150 hover:bg-gray-700 active:bg-gray-900 touch-action-manipulation">
+                    &rarr;
+                </button>
+            </div>
+            <!-- Botões de Ação (Canto Direito) -->
+            <div class="flex space-x-4">
+                <button id="sprint-button" class="bg-red-700/90 text-white p-4 rounded-full text-lg font-bold shadow-2xl w-20 h-20 flex items-center justify-center transition duration-150 hover:bg-red-600 active:bg-red-900 touch-action-manipulation">
+                    CORRER
+                </button>
+                 <button id="attack-button" class="bg-yellow-500/90 text-black p-4 rounded-full text-lg font-bold shadow-2xl w-20 h-20 flex items-center justify-center transition duration-150 hover:bg-yellow-400 active:bg-yellow-700 touch-action-manipulation">
+                    ATACAR
+                </button>
+            </div>
         </div>
         <!-- Fim Controles Móveis (Touch) -->
         
         <div id="ui-overlay" class="absolute inset-0 flex flex-col items-center justify-center transition duration-300 menu-bg-style">
-            <p id="message" class="text-6xl font-extrabold mb-12 hidden bg-white text-black p-4 rounded-lg shadow-2xl z-10">
+            <!-- Mensagem de status do jogo/sucesso -->
+            <p id="message" class="text-3xl font-extrabold mb-12 hidden p-4 rounded-lg shadow-2xl z-10 transition duration-500">
                 Você Morreu
             </p>
             <button id="start-button" class="px-12 py-5 bg-red-600 hover:bg-red-700 text-3xl uppercase font-extrabold rounded-lg shadow-2xl transition duration-200 transform hover:scale-110 active:scale-95 border-2 border-red-800 z-10">
@@ -84,24 +97,55 @@
         const mobileControls = document.getElementById('mobile-controls');
         const leftButton = document.getElementById('left-button');
         const rightButton = document.getElementById('right-button');
+        const sprintButton = document.getElementById('sprint-button'); 
+        const attackButton = document.getElementById('attack-button');
 
+        // URLs de Sprites
         const BG_URL = 'https://i.imgur.com/vE9XTL4.jpeg';
         const IDLE_URL = 'https://i.imgur.com/mQG9fMp.png';
         const WALK1_URL = 'https://i.imgur.com/19xkpcc.png';
         const WALK2_URL = 'https://i.imgur.com/RaochcK.png';
         const RUN_URL = 'https://i.imgur.com/OK0VXEq.png';
+        
+        // Sprites de Ataque (ATUALIZADOS)
+        const ATTACK1_URL = 'https://i.imgur.com/1NZbpr9.png'; 
+        const ATTACK2_URL = 'https://i.imgur.com/vK7YsgC.png'; 
 
         const LUNA_URL = 'https://i.imgur.com/H4oYAFL.png';
         const LUNA_JUMPSCARE_URL = 'https://i.imgur.com/OPHa9DN.png'; 
         
+        // Sprites de Michael
+        const MICHAEL_FRAME1_URL = 'https://i.imgur.com/6fv0VLh.png'; 
+        const MICHAEL_FRAME2_URL = 'https://i.imgur.com/8EtVPG7.png'; 
+        
+        // Imagem da Sombra de Michael E AGORA DO JUMPSCARE DE MICHAEL
+        const MICHAEL_SHADOW_URL = 'https://i.imgur.com/3CBATbv.png'; 
+        
+        // --- CONSTANTES PARA O JUMPSCARE FINAL ---
+        const FINAL_SCARE_URL = 'https://i.imgur.com/UTohcx7.png';
+        const FINAL_SCARE_DELAY_MS = 10000; // 10 segundos
+        const FINAL_SCARE_ANIMATION_DURATION_MS = 1000; // 1 segundo para mover
+        // --- FIM CONSTANTES ---
+        
         const LUNA_SCROLL_DISTANCE_UNIT = 300; 
         const LUNA_APPEARANCE_LOOP = 4; 
+        const MICHAEL_APPEARANCE_DISTANCE = 1500; 
+        
         const LUNA_WORLD_OFFSET = 400; 
         const SCREEN_SCROLL_SCALE = 0.5; 
         const JUMPSCARE_DELAY_MS = 5000; 
         const JUMPSCARE_DURATION_MS = 5000; 
         
+        const STATIONARY_JUMPSCARE_MS = 2000; // 2 segundos de limite para ficar parado durante a perseguição
+        
+        const ATTACK_COOLDOWN_MS = 500;
+        const ATTACK_DURATION_MS = 300;
+
+        
         let bgImg, idleImg, walkFrames = [], runImg, lunaImg;
+        let playerAttackFrames = [];
+        let michaelFrames = []; 
+        let michaelShadowImg; 
         
         let isPlaying = false;
         let bgScrollX = 0;
@@ -114,6 +158,10 @@
             height: 0,
             isMoving: false,
             isSprinting: false,
+            isAttacking: false,
+            attackFrame: 0,
+            lastAttackTime: 0,
+            lastMoveTime: 0, 
             direction: 1,
             walkFrame: 0,
             totalDistance: 0
@@ -128,32 +176,73 @@
             width: 0,
             height: 0,
             appearanceTime: 0, 
-            appearanceDistance: LUNA_SCROLL_DISTANCE_UNIT * (LUNA_APPEARANCE_LOOP - 1)
+            appearanceDistance: LUNA_SCROLL_DISTANCE_UNIT * (LUNA_APPEARANCE_LOOP - 1),
+            hitCount: 0,
+            isDefeated: false
         };
+        
+        let michael = {
+            isVisible: false,
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+            appearanceDistance: MICHAEL_APPEARANCE_DISTANCE,
+            currentFrame: 0, 
+            frameTimer: 0,   
+            frameDuration: 15 
+        };
+        
+        let shadow = {
+            img: null,
+            isVisible: false,
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+            chaseStartTime: 0,
+            chaseDuration: 8000, 
+            hitCount: 0,
+            requiredHits: 5,
+            isTriggered: false 
+        };
+        
+        // --- OBJETO JUMPSCARE FINAL ---
+        let finalScare = {
+            img: null,
+            isPending: false, // Esperando 10 segundos
+            startTime: 0,
+            isActive: false, // Animação em andamento
+            isTriggered: false, // Jumpscare final já ocorreu
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+            targetX: 0,
+            targetY: 0
+        };
+        // --- FIM NOVO OBJETO ---
 
         const BASE_SPEED = 2;
         const SPRINT_SPEED = 5;
         
+        const MICHAEL_WIDTH_SCALE = 0.15; 
+
         const PLAYER_HEIGHT_SCALE = 2.5; 
         const ORIGINAL_SPRITE_RATIO = 140 / 768; 
 
         let keys = {};
 
         // INÍCIO DO SETUP DE ÁUDIO
+        // Todos os jumpscares usarão este player.
         
-        // 1. Player: Carrega o arquivo de áudio local para o jumpscare.
-        // Se você estiver executando localmente (via VS Code ou outro servidor),
-        // garanta que o arquivo 'jumpscare-94984.mp3' (ou o nome do seu arquivo)
-        // esteja na mesma pasta que este arquivo HTML.
         const jumpscarePlayer = new Tone.Player({
-            url: "jumpscare-94984.mp3", // <-- COLOQUE AQUI O NOME DO SEU ARQUIVO DE ÁUDIO MP3/WAV
+            url: "jumpscare-94984.mp3", 
             autostart: false,
             loop: false,
             volume: 0 
         });
         
-        // 2. Volume: Adiciona um Gainer para controle de volume e conecta ao destino
-        // Configurando para 80% do volume máximo
         const masterGain = new Tone.Gain(0.8).toDestination(); 
         jumpscarePlayer.connect(masterGain); 
         
@@ -161,17 +250,16 @@
             console.log("Áudio de jumpscare carregado com sucesso.");
         };
         jumpscarePlayer.onerror = (e) => {
-             // Esta mensagem aparece se o arquivo de áudio não for encontrado
             console.error("ERRO AO CARREGAR ÁUDIO DE JUMPSCARE. Verifique se o arquivo 'jumpscare-94984.mp3' está na mesma pasta do HTML.", e);
         };
 
         function playJumpscareSound() {
             try {
-                // Inicia o contexto de áudio
                 Tone.start(); 
                 
-                // Para garantir que o som comece desde o início
+                // Reinicia o áudio do início para cada jumpscare
                 if (jumpscarePlayer.loaded) {
+                    jumpscarePlayer.stop(); 
                     jumpscarePlayer.start(0);
                 }
             } catch (error) {
@@ -187,7 +275,13 @@
                 { obj: 'walkFrames[0]', url: WALK1_URL },
                 { obj: 'walkFrames[1]', url: WALK2_URL },
                 { obj: 'runImg', url: RUN_URL },
-                { obj: 'lunaImg', url: LUNA_URL } 
+                { obj: 'lunaImg', url: LUNA_URL }, 
+                { obj: 'playerAttackFrames[0]', url: ATTACK1_URL }, 
+                { obj: 'playerAttackFrames[1]', url: ATTACK2_URL }, 
+                { obj: 'michaelFrames[0]', url: MICHAEL_FRAME1_URL }, 
+                { obj: 'michaelFrames[1]', url: MICHAEL_FRAME2_URL }, 
+                { obj: 'michaelShadowImg', url: MICHAEL_SHADOW_URL },
+                { obj: 'finalScare.img', url: FINAL_SCARE_URL } 
             ];
 
             function loadImage(source) {
@@ -207,9 +301,18 @@
                     else if (res.obj.startsWith('walkFrames')) {
                         const index = parseInt(res.obj.match(/\[(\d+)\]/)[1]);
                         walkFrames[index] = res.img;
+                    } else if (res.obj.startsWith('playerAttackFrames')) {
+                        const index = parseInt(res.obj.match(/\[(\d+)\]/)[1]);
+                        playerAttackFrames[index] = res.img;
                     } else if (res.obj === 'lunaImg') {
                         luna.img = res.img;
-                        lunaImg = res.img; 
+                    } else if (res.obj.startsWith('michaelFrames')) {
+                        const index = parseInt(res.obj.match(/\[(\d+)\]/)[1]);
+                        michaelFrames[index] = res.img;
+                    } else if (res.obj === 'michaelShadowImg') {
+                        shadow.img = res.img; 
+                    } else if (res.obj === 'finalScare.img') {
+                        finalScare.img = res.img; 
                     }
                 });
                 
@@ -261,20 +364,52 @@
                 luna.height = luna.width * LUNA_ORIGINAL_RATIO;
                 luna.y = canvas.height - luna.height + 10;
             }
+            
+            if (michaelFrames.length > 0) {
+                const MICHAEL_ORIGINAL_RATIO = 3; 
+                michael.width = player.width * MICHAEL_WIDTH_SCALE; 
+                michael.height = michael.width * MICHAEL_ORIGINAL_RATIO * 0.5; 
+                michael.y = canvas.height - michael.height - 20;
+            }
+            
+            if (shadow.img) {
+                const SHADOW_ORIGINAL_RATIO = 1178 / 500; 
+                shadow.width = michael.width * 1.5; 
+                shadow.height = shadow.width * SHADOW_ORIGINAL_RATIO;
+                shadow.y = canvas.height - shadow.height - 20; 
+            }
+            
+            // Definições de tamanho e posição para o Jumpscare Final
+            if (finalScare.img) {
+                const FINAL_SCARE_RATIO = finalScare.img.height / finalScare.img.width; 
+                finalScare.width = canvas.width * 0.40; 
+                finalScare.height = finalScare.width * FINAL_SCARE_RATIO;
+                
+                // Posição alvo: Centro
+                finalScare.targetX = (canvas.width / 2) - (finalScare.width / 2);
+                finalScare.targetY = (canvas.height / 2) - (finalScare.height / 2);
+                
+                // Posição inicial (fora da tela, canto superior direito)
+                finalScare.x = canvas.width;
+                finalScare.y = 0;
+            }
         }
 
         function startGame() {
-            if (!bgImg || walkFrames.length !== 2 || !idleImg || !runImg) return;
+            if (!bgImg || walkFrames.length !== 2 || !idleImg || !runImg || playerAttackFrames.length !== 2) return;
             
             isPlaying = true;
             uiOverlay.classList.add('hidden');
             uiOverlay.classList.remove('menu-bg-style', 'gameover-bg-style');
-            mobileControls.classList.remove('hidden'); // Mostrar controles móveis
+            mobileControls.classList.remove('hidden'); 
             
             bgScrollX = 0;
             player.totalDistance = 0;
             player.isMoving = false;
             player.isSprinting = false;
+            player.isAttacking = false;
+            player.lastAttackTime = 0;
+            player.lastMoveTime = Date.now(); 
             
             jumpscareContent.classList.add('hidden');
             jumpscareArea.classList.add('hidden');
@@ -282,6 +417,27 @@
             luna.isVisible = false;
             luna.isTriggered = false;
             luna.appearanceTime = 0;
+            luna.hitCount = 0; 
+            luna.isDefeated = false; 
+            
+            michael.isVisible = false; 
+            michael.currentFrame = 0;
+            michael.frameTimer = 0;
+            michael.appearanceDistance = MICHAEL_APPEARANCE_DISTANCE; 
+
+            shadow.isVisible = false;
+            shadow.chaseStartTime = 0;
+            shadow.hitCount = 0;
+            shadow.isTriggered = false;
+            
+            // Reset Jumpscare Final
+            finalScare.isPending = false;
+            finalScare.startTime = 0;
+            finalScare.isActive = false;
+            finalScare.isTriggered = false;
+
+
+            messageElement.classList.add('hidden'); 
 
             if (gameLoopId) cancelAnimationFrame(gameLoopId);
             gameLoopId = requestAnimationFrame(gameLoop);
@@ -295,10 +451,163 @@
 
             gameLoopId = requestAnimationFrame(gameLoop);
         }
+        
+        function checkAttackHit() {
+            const attackRange = player.width * 0.5;
+            let hit = false;
+
+            // 1. Verificar Luna
+            if (luna.isVisible && !luna.isTriggered && !luna.isDefeated) {
+                const distanceToLuna = luna.x - player.x;
+                const isLunaInFront = player.direction === 1 && distanceToLuna > 0 && distanceToLuna < attackRange;
+                const isLunaBehind = player.direction === -1 && distanceToLuna < 0 && distanceToLuna > -attackRange;
+                
+                if (isLunaInFront || isLunaBehind) {
+                    luna.hitCount++; 
+                    hit = true;
+
+                    if (luna.hitCount >= 3) {
+                        luna.isDefeated = true;
+                        luna.isVisible = false;
+                        
+                    } else {
+                        luna.appearanceTime = Date.now(); 
+                        luna.isVisible = false; 
+                    }
+                }
+            }
+            
+            // 2. Verificar Michael
+            if (luna.isDefeated && michael.isVisible && !shadow.isVisible && !finalScare.isPending) {
+                const distanceToMichael = michael.x - player.x;
+                const isMichaelInFront = player.direction === 1 && distanceToMichael > 0 && distanceToMichael < attackRange;
+                const isMichaelBehind = player.direction === -1 && distanceToMichael < 0 && distanceToMichael > -attackRange;
+
+                if (isMichaelInFront || isMichaelBehind) {
+                    michael.isVisible = false;
+                    
+                    // Inicia a perseguição da Sombra
+                    shadow.isVisible = true;
+                    shadow.chaseStartTime = Date.now();
+                    shadow.hitCount = 0;
+                    shadow.isTriggered = false;
+                    
+                    hit = true;
+                }
+            }
+
+            // 3. Verificar Sombra (se estiver visível e a perseguição estiver ativa)
+            if (shadow.isVisible && !shadow.isTriggered) {
+                 const distanceToShadow = shadow.x - player.x;
+                 const isShadowClose = distanceToShadow < 0 && distanceToShadow > -shadow.width * 0.8; 
+
+                if (isShadowClose) {
+                    shadow.hitCount++;
+                    hit = true;
+                    
+                    if (shadow.hitCount >= shadow.requiredHits) {
+                        // Derrotada!
+                        shadow.isVisible = false;
+                        shadow.isTriggered = true; 
+                        
+                        // INÍCIO: Sequência de Jumpscare Final (10 segundos de espera)
+                        finalScare.isPending = true;
+                        finalScare.startTime = Date.now();
+                        
+                        console.log("Sombra de Michael repelida! Jumpscare final agendado em 10 segundos.");
+                    }
+                }
+            }
+            
+            return hit;
+        }
+
+        function attemptAttack() {
+            const now = Date.now();
+            // Permite ataque somente se não houver um evento final ativo ou pendente
+            if (isPlaying && !player.isAttacking && (now - player.lastAttackTime > ATTACK_COOLDOWN_MS) && !finalScare.isActive && !finalScare.isTriggered) {
+                
+                player.isAttacking = true;
+                player.attackFrame = 0;
+                player.lastAttackTime = now;
+                
+                checkAttackHit();
+                
+                setTimeout(() => {
+                    player.isAttacking = false;
+                    player.attackFrame = 0;
+                }, ATTACK_DURATION_MS);
+            }
+        }
 
         function update() {
+            const now = Date.now();
+            
+            // --- Lógica de Jumpscare Final ---
+            if (finalScare.isPending || finalScare.isActive || finalScare.isTriggered) {
+                
+                if (finalScare.isPending) {
+                    const timeSinceDefeat = now - finalScare.startTime;
+
+                    // Transição da fase pendente para ativa
+                    if (timeSinceDefeat >= FINAL_SCARE_DELAY_MS) {
+                        finalScare.isPending = false;
+                        finalScare.isActive = true;
+                        finalScare.startTime = now; 
+
+                        // Re-ajusta a posição inicial (canto superior direito)
+                        finalScare.x = canvas.width;
+                        finalScare.y = 0;
+
+                        console.log("Jumpscare Final Ativado.");
+                    }
+                    // O jogo continua (sem return) para permitir o movimento do jogador durante o isPending.
+                }
+
+                if (finalScare.isActive) {
+                    const elapsedTime = now - finalScare.startTime;
+                    const progress = Math.min(1, elapsedTime / FINAL_SCARE_ANIMATION_DURATION_MS);
+                    
+                    const startX = canvas.width;
+                    const startY = 0;
+                    
+                    // Interpolação linear para mover o sprite para o centro
+                    finalScare.x = startX + (finalScare.targetX - startX) * progress;
+                    finalScare.y = startY + (finalScare.targetY - startY) * progress;
+
+                    // Se a animação terminou, aciona o jumpscare
+                    if (progress >= 1) {
+                        finalScare.isActive = false;
+                        finalScare.isTriggered = true;
+                        // O jumpscare final usa a imagem da animação
+                        triggerJumpscare(FINAL_SCARE_URL); 
+                        return; 
+                    }
+                    return; // Interrompe todas as outras lógicas enquanto a animação está ativa
+                }
+                
+                if (finalScare.isTriggered) {
+                    return; // Interrompe todas as outras lógicas após o jumpscare
+                }
+            }
+            // --- FIM Lógica de Jumpscare Final ---
+            
+            if (player.isAttacking) {
+                player.isMoving = false; 
+                
+                const timeElapsedInAttack = Date.now() - (player.lastAttackTime); 
+                if (timeElapsedInAttack < ATTACK_DURATION_MS / 2) {
+                    player.attackFrame = 0; 
+                } else {
+                    player.attackFrame = 1; 
+                }
+                
+                player.lastMoveTime = Date.now(); 
+                
+                return;
+            }
+
             player.isMoving = false;
-            let moved = false;
             
             const currentSpeed = player.isSprinting ? SPRINT_SPEED : BASE_SPEED;
             
@@ -307,14 +616,17 @@
                 player.direction = 1;
                 bgScrollX -= currentSpeed;
                 player.totalDistance += currentSpeed; 
-                moved = true;
             } 
             
             if (keys['ArrowLeft'] || keys['a']) {
                 player.isMoving = true;
                 player.direction = -1;
                 bgScrollX += currentSpeed; 
-                moved = true;
+            }
+
+            // Atualiza o lastMoveTime se o jogador está se movendo
+            if (player.isMoving) {
+                player.lastMoveTime = Date.now();
             }
 
             if (player.isMoving) {
@@ -334,7 +646,8 @@
                 }
             }
             
-            if (!luna.isTriggered) {
+            // Lógica de aparecimento de Luna e Jumpscare
+            if (!luna.isDefeated && !luna.isTriggered) {
                 
                 if (player.totalDistance >= luna.appearanceDistance) {
                     if (!luna.isVisible) {
@@ -349,7 +662,9 @@
                             luna.isTriggered = true;
                             luna.isVisible = false; 
                             
+                            // Jumpscare 1
                             triggerJumpscare(LUNA_JUMPSCARE_URL);
+                            return;
                         }
                     }
                 }
@@ -358,6 +673,66 @@
                     const lunaWorldX = luna.appearanceDistance + LUNA_WORLD_OFFSET;
                     const calculatedScreenX = player.x + (lunaWorldX - player.totalDistance) * SCREEN_SCROLL_SCALE;
                     luna.x = calculatedScreenX; 
+                }
+            }
+            
+            // Lógica de Michael 
+            if (luna.isDefeated && !shadow.isVisible) { 
+                if (!michael.isVisible) {
+                    if (player.totalDistance >= michael.appearanceDistance) {
+                        michael.isVisible = true;
+                    }
+                }
+                
+                if (michael.isVisible) {
+                    const APPEARANCE_SCREEN_X = canvas.width * 0.7; 
+                    
+                    const totalScrollAfterAppearance = player.totalDistance - michael.appearanceDistance;
+                    michael.x = APPEARANCE_SCREEN_X - totalScrollAfterAppearance * SCREEN_SCROLL_SCALE; 
+                    
+                    michael.frameTimer++;
+                    if (michael.frameTimer >= michael.frameDuration) {
+                        michael.currentFrame = (michael.currentFrame + 1) % michaelFrames.length;
+                        michael.frameTimer = 0;
+                    }
+
+                    if (michael.x < -michael.width) {
+                        michael.isVisible = false;
+                        michael.appearanceDistance = player.totalDistance + MICHAEL_APPEARANCE_DISTANCE; 
+                    }
+                }
+            }
+            
+            // Lógica de perseguição da Sombra de Michael
+            if (shadow.isVisible && !shadow.isTriggered) {
+                const elapsedTime = now - shadow.chaseStartTime;
+                
+                const FOLLOW_DISTANCE = -50; 
+                const targetX = player.x - shadow.width / 2 - FOLLOW_DISTANCE; 
+                
+                shadow.x = targetX; 
+                
+                // Contagem do tempo limite de perseguição
+                if (elapsedTime >= shadow.chaseDuration) {
+                    shadow.isTriggered = true;
+                    shadow.isVisible = false;
+                    
+                    // Jumpscare 2 (tempo esgotado)
+                    triggerJumpscare(MICHAEL_SHADOW_URL);
+                    return; 
+                }
+                
+                // Checa se o jogador ficou parado por muito tempo
+                const timeStationary = now - player.lastMoveTime;
+                
+                if (!player.isMoving && timeStationary >= STATIONARY_JUMPSCARE_MS) {
+                    shadow.isTriggered = true;
+                    shadow.isVisible = false;
+                    
+                    console.log("Jumpscare acionado por ficar parado.");
+                    // Jumpscare 2 (parou de se mover)
+                    triggerJumpscare(MICHAEL_SHADOW_URL);
+                    return; 
                 }
             }
         }
@@ -371,8 +746,48 @@
                 ctx.drawImage(bgImg, bgScrollX + bgCanvasWidth, 0, bgCanvasWidth, canvas.height);
             }
 
+            // Desenha Luna
             if (luna.img && luna.isVisible && !luna.isTriggered) {
                 ctx.drawImage(luna.img, luna.x, luna.y, luna.width, luna.height);
+            }
+            
+            // Desenha Michael
+            if (michael.isVisible && michaelFrames.length > 0 && !shadow.isVisible && !finalScare.isPending) {
+                const currentMichaelImg = michaelFrames[michael.currentFrame];
+                ctx.drawImage(currentMichaelImg, michael.x, michael.y, michael.width, michael.height);
+            }
+            
+            // Desenha a Sombra de Michael
+            if (shadow.img && shadow.isVisible && !shadow.isTriggered) {
+                const now = Date.now();
+                const timeLeft = Math.max(0, (shadow.chaseStartTime + shadow.chaseDuration) - now);
+                const secondsLeft = Math.ceil(timeLeft / 1000);
+                
+                ctx.globalAlpha = 0.7; 
+                ctx.drawImage(shadow.img, shadow.x, shadow.y, shadow.width, shadow.height);
+                ctx.globalAlpha = 1.0; 
+                
+                // Exibir contador de hits e tempo (feedback crucial)
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.font = '28px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                
+                const required = shadow.requiredHits;
+                const current = shadow.hitCount;
+                
+                ctx.fillText(`Ataques necessários: ${required - current}`, canvas.width / 2, 50);
+
+                ctx.fillStyle = secondsLeft <= 3 ? 'rgba(255, 50, 50, 0.9)' : 'rgba(255, 255, 255, 0.9)';
+                ctx.fillText(`Tempo restante: ${secondsLeft}s`, canvas.width / 2, 90);
+                
+                // Indicador de inatividade
+                const timeStationary = now - player.lastMoveTime;
+                if (!player.isMoving && timeStationary > 0 && timeStationary < STATIONARY_JUMPSCARE_MS) {
+                    const remainingTime = ((STATIONARY_JUMPSCARE_MS - timeStationary) / 1000).toFixed(1);
+                    const warningText = `NÃO PARE! (${remainingTime}s)`;
+                    ctx.fillStyle = 'yellow';
+                    ctx.fillText(warningText, canvas.width / 2, 130);
+                }
             }
 
             if (idleImg) {
@@ -381,7 +796,9 @@
                 }
 
                 let img;
-                if (player.isMoving) {
+                if (player.isAttacking) {
+                    img = playerAttackFrames[player.attackFrame];
+                } else if (player.isMoving) {
                     if (player.isSprinting) {
                         img = runImg;
                     } else {
@@ -397,10 +814,31 @@
                 ctx.translate(player.x + (player.width / 2), player.y + (player.height / 2));
                 ctx.scale(scaleX, 1);
                 
-                ctx.drawImage(img, -player.width / 2, -player.height / 2, player.width, player.height);
+                // Não desenha o jogador se a animação final estiver ativa
+                if (!finalScare.isActive) {
+                    ctx.drawImage(img, -player.width / 2, -player.height / 2, player.width, player.height);
+                }
                 
                 ctx.restore();
             }
+            
+            // --- Desenha o Jumpscare Final (sprite pequeno que se move) ---
+            if (finalScare.isActive) {
+                if (finalScare.img) {
+                    ctx.drawImage(finalScare.img, finalScare.x, finalScare.y, finalScare.width, finalScare.height);
+                }
+            }
+            
+            // --- Mensagem de Espera do Jumpscare Final (Sem contador) ---
+            if (finalScare.isPending) {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.font = '36px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                
+                // Apenas a mensagem de Betinha, centralizada
+                ctx.fillText("NÃO MATE O BETINHA!!", canvas.width / 2, canvas.height / 2);
+            }
+            // --- FIM Mensagem de Espera ---
         }
         
         function triggerJumpscare(imageUrl) {
@@ -411,8 +849,9 @@
             
             document.getElementById('scare-image').src = imageUrl;
             
-            playJumpscareSound(); 
+            playJumpscareSound(); // REPRODUZ O SOM
 
+            // Se o jumpscare ocorrer, o jogo acaba
             setTimeout(resetGame, JUMPSCARE_DURATION_MS); 
         }
 
@@ -425,9 +864,11 @@
             uiOverlay.classList.remove('menu-bg-style'); 
             uiOverlay.classList.add('gameover-bg-style');
             
-            mobileControls.classList.add('hidden'); // Esconder controles móveis
+            mobileControls.classList.add('hidden'); 
             
-            messageElement.classList.add('hidden');
+            messageElement.textContent = "Você Morreu";
+            messageElement.classList.remove('hidden', 'bg-green-700', 'text-white');
+            messageElement.classList.add('bg-white', 'text-black');
 
             startButton.textContent = "JOGAR"; 
             startButton.classList.remove('hidden');
@@ -441,9 +882,11 @@
             
             if (e.key === 'Shift') {
                 player.isSprinting = true;
+            } else if (key === 'x') {
+                attemptAttack();
             }
             
-            if (['ArrowLeft', 'ArrowRight', 'a', 'd', 'Shift'].includes(e.key)) {
+            if (['ArrowLeft', 'ArrowRight', 'a', 'd', 'Shift', 'x'].includes(e.key)) {
                 e.preventDefault();
             }
         });
@@ -468,22 +911,39 @@
         
         const controls = [
             { button: leftButton, key: 'ArrowLeft' },
-            { button: rightButton, key: 'ArrowRight' }
+            { button: rightButton, key: 'ArrowRight' },
+            { button: sprintButton, key: 'shift', isSprint: true },
+            { button: attackButton, key: 'x', isAttack: true }
         ];
 
-        controls.forEach(({ button, key }) => {
-            // Eventos de toque para celular
+        controls.forEach(({ button, key, isSprint = false, isAttack = false }) => {
             button.addEventListener('touchstart', (e) => {
                 e.preventDefault(); 
                 handleButtonPress(key);
+                if (isSprint) player.isSprinting = true;
+                if (isAttack) attemptAttack(); 
             }, { passive: false }); 
             
-            button.addEventListener('touchend', () => handleButtonRelease(key));
+            button.addEventListener('touchend', () => {
+                handleButtonRelease(key);
+                if (isSprint) player.isSprinting = false;
+            });
             
-            // Eventos de mouse para desktop/testes
-            button.addEventListener('mousedown', () => handleButtonPress(key));
-            button.addEventListener('mouseup', () => handleButtonRelease(key));
-            button.addEventListener('mouseleave', () => handleButtonRelease(key)); 
+            button.addEventListener('mousedown', () => {
+                handleButtonPress(key);
+                if (isSprint) player.isSprinting = true;
+                if (isAttack) attemptAttack();
+            });
+            button.addEventListener('mouseup', () => {
+                handleButtonRelease(key);
+                if (isSprint) player.isSprinting = false;
+            });
+            button.addEventListener('mouseleave', () => {
+                if (keys[key] && !isAttack) { 
+                    handleButtonRelease(key);
+                    if (isSprint) player.isSprinting = false;
+                }
+            }); 
         });
         // --- Fim Lógica de Controles Móveis ---
 
