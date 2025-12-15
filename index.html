@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jogo sla oq que deu mais trabalho do que eu queria </title>
+    <title>Jogo de Rolagem Lateral de Sustos</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
     <style>
@@ -42,6 +42,17 @@
         
         <canvas id="gameCanvas" class="block"></canvas>
         
+        <!-- Controles Móveis (Touch) -->
+        <div id="mobile-controls" class="absolute bottom-0 left-0 right-0 p-4 flex justify-between z-40 hidden">
+            <button id="left-button" class="bg-gray-800/80 text-white p-4 rounded-full text-4xl shadow-2xl w-20 h-20 flex items-center justify-center transition duration-150 hover:bg-gray-700 active:bg-gray-900 touch-action-manipulation">
+                &larr;
+            </button>
+            <button id="right-button" class="bg-gray-800/80 text-white p-4 rounded-full text-4xl shadow-2xl w-20 h-20 flex items-center justify-center transition duration-150 hover:bg-gray-700 active:bg-gray-900 touch-action-manipulation">
+                &rarr;
+            </button>
+        </div>
+        <!-- Fim Controles Móveis (Touch) -->
+        
         <div id="ui-overlay" class="absolute inset-0 flex flex-col items-center justify-center transition duration-300 menu-bg-style">
             <p id="message" class="text-6xl font-extrabold mb-12 hidden bg-white text-black p-4 rounded-lg shadow-2xl z-10">
                 Você Morreu
@@ -70,6 +81,10 @@
         
         const controlsText = document.getElementById('controls-text'); 
         
+        const mobileControls = document.getElementById('mobile-controls');
+        const leftButton = document.getElementById('left-button');
+        const rightButton = document.getElementById('right-button');
+
         const BG_URL = 'https://i.imgur.com/vE9XTL4.jpeg';
         const IDLE_URL = 'https://i.imgur.com/mQG9fMp.png';
         const WALK1_URL = 'https://i.imgur.com/19xkpcc.png';
@@ -134,14 +149,20 @@
             url: "jumpscare-94984.mp3", // <-- COLOQUE AQUI O NOME DO SEU ARQUIVO DE ÁUDIO MP3/WAV
             autostart: false,
             loop: false,
-            volume: 100 
+            volume: 0 
         });
         
+        // 2. Volume: Adiciona um Gainer para controle de volume e conecta ao destino
+        // Configurando para 80% do volume máximo
         const masterGain = new Tone.Gain(0.8).toDestination(); 
         jumpscarePlayer.connect(masterGain); 
         
         jumpscarePlayer.onload = () => {
             console.log("Áudio de jumpscare carregado com sucesso.");
+        };
+        jumpscarePlayer.onerror = (e) => {
+             // Esta mensagem aparece se o arquivo de áudio não for encontrado
+            console.error("ERRO AO CARREGAR ÁUDIO DE JUMPSCARE. Verifique se o arquivo 'jumpscare-94984.mp3' está na mesma pasta do HTML.", e);
         };
 
         function playJumpscareSound() {
@@ -248,6 +269,7 @@
             isPlaying = true;
             uiOverlay.classList.add('hidden');
             uiOverlay.classList.remove('menu-bg-style', 'gameover-bg-style');
+            mobileControls.classList.remove('hidden'); // Mostrar controles móveis
             
             bgScrollX = 0;
             player.totalDistance = 0;
@@ -403,6 +425,8 @@
             uiOverlay.classList.remove('menu-bg-style'); 
             uiOverlay.classList.add('gameover-bg-style');
             
+            mobileControls.classList.add('hidden'); // Esconder controles móveis
+            
             messageElement.classList.add('hidden');
 
             startButton.textContent = "JOGAR"; 
@@ -433,6 +457,36 @@
             }
         });
         
+        // --- Lógica de Controles Móveis ---
+        function handleButtonPress(key) {
+            keys[key] = true;
+        }
+
+        function handleButtonRelease(key) {
+            keys[key] = false;
+        }
+        
+        const controls = [
+            { button: leftButton, key: 'ArrowLeft' },
+            { button: rightButton, key: 'ArrowRight' }
+        ];
+
+        controls.forEach(({ button, key }) => {
+            // Eventos de toque para celular
+            button.addEventListener('touchstart', (e) => {
+                e.preventDefault(); 
+                handleButtonPress(key);
+            }, { passive: false }); 
+            
+            button.addEventListener('touchend', () => handleButtonRelease(key));
+            
+            // Eventos de mouse para desktop/testes
+            button.addEventListener('mousedown', () => handleButtonPress(key));
+            button.addEventListener('mouseup', () => handleButtonRelease(key));
+            button.addEventListener('mouseleave', () => handleButtonRelease(key)); 
+        });
+        // --- Fim Lógica de Controles Móveis ---
+
         window.onload = initImages;
 
     </script>
