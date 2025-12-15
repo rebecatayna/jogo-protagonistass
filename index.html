@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo sla oq que deu mais trabalho do que eu queria </title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        html { font-family: 'Inter', sans-serif; }
+        body {
+            background-color: #000;
+            height: 100vh;
+            width: 100vw;
+            margin: 0;
+            overflow: hidden;
+        }
+        #gameCanvas {
+            background-color: #000;
+        }
+        #ui-overlay.menu-bg-style {
+            background-image: url('https://i.imgur.com/wWizKLS.png');
+            background-size: cover;
+            background-position: center;
+            background-color: transparent; 
+            background-blend-mode: normal;
+            backdrop-filter: none; 
+            -webkit-backdrop-filter: none; 
+        }
+
+        #ui-overlay.gameover-bg-style {
+            background-image: none;
+            background-color: rgba(0, 0, 0, 0.8);
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+        }
+    </style>
+</head>
+<body class="text-gray-100 flex items-center justify-center">
+
+    <div id="game-container" class="relative overflow-hidden"> 
+        
+        <canvas id="gameCanvas" class="block"></canvas>
+        
+        <div id="ui-overlay" class="absolute inset-0 flex flex-col items-center justify-center transition duration-300 menu-bg-style">
+            <p id="message" class="text-6xl font-extrabold mb-12 hidden bg-white text-black p-4 rounded-lg shadow-2xl z-10">
+                Você Morreu
+            </p>
+            <button id="start-button" class="px-12 py-5 bg-red-600 hover:bg-red-700 text-3xl uppercase font-extrabold rounded-lg shadow-2xl transition duration-200 transform hover:scale-110 active:scale-95 border-2 border-red-800 z-10">
+                JOGAR
+            </button>
+        </div>
+
+        <div id="jumpscare-area" class="hidden absolute inset-0 bg-black flex flex-col items-center justify-center p-0 z-50">
+            <div id="jumpscare-content" class="hidden flex flex-col items-center justify-center w-full h-full">
+                <img id="scare-image" src="" alt="Imagem Surpresa" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/1600x900/FF0000/FFFFFF?text=SURPRESA! JUMPSCARE FULLSCREEN';">
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const uiOverlay = document.getElementById('ui-overlay');
+        const startButton = document.getElementById('start-button');
+        const messageElement = document.getElementById('message');
+        const jumpscareArea = document.getElementById('jumpscare-area');
+        const jumpscareContent = document.getElementById('jumpscare-content');
+        
+        const controlsText = document.getElementById('controls-text'); 
+        
+        const BG_URL = 'https://i.imgur.com/vE9XTL4.jpeg';
+        const IDLE_URL = 'https://i.imgur.com/mQG9fMp.png';
+        const WALK1_URL = 'https://i.imgur.com/19xkpcc.png';
+        const WALK2_URL = 'https://i.imgur.com/RaochcK.png';
+        const RUN_URL = 'https://i.imgur.com/OK0VXEq.png';
+
+        const LUNA_URL = 'https://i.imgur.com/H4oYAFL.png';
+        const LUNA_JUMPSCARE_URL = 'https://i.imgur.com/OPHa9DN.png'; 
+        
+        const LUNA_SCROLL_DISTANCE_UNIT = 300; 
+        const LUNA_APPEARANCE_LOOP = 4; 
+        const LUNA_WORLD_OFFSET = 400; 
+        const SCREEN_SCROLL_SCALE = 0.5; 
+        const JUMPSCARE_DELAY_MS = 5000; 
+        const JUMPSCARE_DURATION_MS = 5000; 
+        
+        let bgImg, idleImg, walkFrames = [], runImg, lunaImg;
+        
+        let isPlaying = false;
+        let bgScrollX = 0;
+        let gameLoopId;
+
+        let player = {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+            isMoving: false,
+            isSprinting: false,
+            direction: 1,
+            walkFrame: 0,
+            totalDistance: 0
+        };
+
+        let luna = {
+            img: null,
+            isVisible: false,
+            isTriggered: false,
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+            appearanceTime: 0, 
+            appearanceDistance: LUNA_SCROLL_DISTANCE_UNIT * (LUNA_APPEARANCE_LOOP - 1)
+        };
+
+        const BASE_SPEED = 2;
+        const SPRINT_SPEED = 5;
+        
+        const PLAYER_HEIGHT_SCALE = 2.5; 
+        const ORIGINAL_SPRITE_RATIO = 140 / 768; 
+
+        let keys = {};
+
+        // INÍCIO DO SETUP DE ÁUDIO
+        
+        // 1. Player: Carrega o arquivo de áudio local para o jumpscare.
+        // Se você estiver executando localmente (via VS Code ou outro servidor),
+        // garanta que o arquivo 'jumpscare-94984.mp3' (ou o nome do seu arquivo)
+        // esteja na mesma pasta que este arquivo HTML.
+        const jumpscarePlayer = new Tone.Player({
+            url: "jumpscare-94984.mp3", // <-- COLOQUE AQUI O NOME DO SEU ARQUIVO DE ÁUDIO MP3/WAV
+            autostart: false,
+            loop: false,
+            volume: 100 
+        });
+        
+        const masterGain = new Tone.Gain(0.8).toDestination(); 
+        jumpscarePlayer.connect(masterGain); 
+        
+        jumpscarePlayer.onload = () => {
+            console.log("Áudio de jumpscare carregado com sucesso.");
+        };
+
+        function playJumpscareSound() {
+            try {
+                // Inicia o contexto de áudio
+                Tone.start(); 
+                
+                // Para garantir que o som comece desde o início
+                if (jumpscarePlayer.loaded) {
+                    jumpscarePlayer.start(0);
+                }
+            } catch (error) {
+                console.error("Erro ao reproduzir áudio:", error);
+            }
+        }
+        // FIM DO SETUP DE ÁUDIO
+
+        function initImages() {
+            const imageSources = [
+                { obj: 'bgImg', url: BG_URL },
+                { obj: 'idleImg', url: IDLE_URL },
+                { obj: 'walkFrames[0]', url: WALK1_URL },
+                { obj: 'walkFrames[1]', url: WALK2_URL },
+                { obj: 'runImg', url: RUN_URL },
+                { obj: 'lunaImg', url: LUNA_URL } 
+            ];
+
+            function loadImage(source) {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => resolve({ obj: source.obj, img: img });
+                    img.onerror = () => reject(new Error(`Falha ao carregar imagem: ${source.url}`));
+                    img.src = source.url;
+                });
+            }
+
+            Promise.all(imageSources.map(loadImage)).then(results => {
+                results.forEach(res => {
+                    if (res.obj === 'bgImg') bgImg = res.img;
+                    else if (res.obj === 'idleImg') idleImg = res.img;
+                    else if (res.obj === 'runImg') runImg = res.img;
+                    else if (res.obj.startsWith('walkFrames')) {
+                        const index = parseInt(res.obj.match(/\[(\d+)\]/)[1]);
+                        walkFrames[index] = res.img;
+                    } else if (res.obj === 'lunaImg') {
+                        luna.img = res.img;
+                        lunaImg = res.img; 
+                    }
+                });
+                
+                resizeCanvas();
+                window.addEventListener('resize', resizeCanvas); 
+                
+                console.log("Todas as imagens carregadas. Pronto para iniciar.");
+                startButton.textContent = "JOGAR";
+            }).catch(error => {
+                console.error(error.message);
+                startButton.textContent = "ERRO DE CARREGAMENTO";
+                startButton.disabled = true;
+            });
+        }
+        
+        function resizeCanvas() {
+            const container = document.getElementById('game-container');
+            const targetRatio = 16 / 10; 
+
+            let newWidth = window.innerWidth;
+            let newHeight = window.innerHeight;
+
+            const currentRatio = newWidth / newHeight;
+
+            if (currentRatio > targetRatio) {
+                newWidth = newHeight * targetRatio;
+            } else {
+                newHeight = newWidth / targetRatio;
+            }
+
+            canvas.width = newWidth;
+            canvas.height = newHeight;
+            
+            container.style.width = `${newWidth}px`;
+            container.style.height = `${newHeight}px`;
+
+            if (idleImg) {
+                player.width = canvas.width * 0.90; 
+                player.height = player.width * ORIGINAL_SPRITE_RATIO * PLAYER_HEIGHT_SCALE;
+            }
+            
+            player.x = canvas.width * 0.05;
+
+            player.y = canvas.height - player.height + 10; 
+            
+            if (luna.img) {
+                const LUNA_ORIGINAL_RATIO = 677 / 277; 
+                luna.width = player.width * 0.35; 
+                luna.height = luna.width * LUNA_ORIGINAL_RATIO;
+                luna.y = canvas.height - luna.height + 10;
+            }
+        }
+
+        function startGame() {
+            if (!bgImg || walkFrames.length !== 2 || !idleImg || !runImg) return;
+            
+            isPlaying = true;
+            uiOverlay.classList.add('hidden');
+            uiOverlay.classList.remove('menu-bg-style', 'gameover-bg-style');
+            
+            bgScrollX = 0;
+            player.totalDistance = 0;
+            player.isMoving = false;
+            player.isSprinting = false;
+            
+            jumpscareContent.classList.add('hidden');
+            jumpscareArea.classList.add('hidden');
+            
+            luna.isVisible = false;
+            luna.isTriggered = false;
+            luna.appearanceTime = 0;
+
+            if (gameLoopId) cancelAnimationFrame(gameLoopId);
+            gameLoopId = requestAnimationFrame(gameLoop);
+        }
+        
+        function gameLoop() {
+            if (!isPlaying) return;
+
+            update();
+            draw();
+
+            gameLoopId = requestAnimationFrame(gameLoop);
+        }
+
+        function update() {
+            player.isMoving = false;
+            let moved = false;
+            
+            const currentSpeed = player.isSprinting ? SPRINT_SPEED : BASE_SPEED;
+            
+            if (keys['ArrowRight'] || keys['d']) {
+                player.isMoving = true;
+                player.direction = 1;
+                bgScrollX -= currentSpeed;
+                player.totalDistance += currentSpeed; 
+                moved = true;
+            } 
+            
+            if (keys['ArrowLeft'] || keys['a']) {
+                player.isMoving = true;
+                player.direction = -1;
+                bgScrollX += currentSpeed; 
+                moved = true;
+            }
+
+            if (player.isMoving) {
+                player.walkFrame += player.isSprinting ? 0.2 : 0.1; 
+                if (player.walkFrame >= 2) player.walkFrame = 0;
+            } else {
+                player.walkFrame = 0;
+            }
+
+            if (bgImg) {
+                const bgCanvasWidth = canvas.height * (bgImg.width / bgImg.height);
+                if (bgScrollX < -bgCanvasWidth) {
+                    bgScrollX += bgCanvasWidth;
+                } 
+                if (bgScrollX > 0) {
+                    bgScrollX = 0; 
+                }
+            }
+            
+            if (!luna.isTriggered) {
+                
+                if (player.totalDistance >= luna.appearanceDistance) {
+                    if (!luna.isVisible) {
+                        luna.isVisible = true;
+                        luna.appearanceTime = Date.now(); 
+                    }
+
+                    if (luna.isVisible && luna.appearanceTime > 0) {
+                        const timeSinceAppearance = Date.now() - luna.appearanceTime;
+                        
+                        if (timeSinceAppearance >= JUMPSCARE_DELAY_MS) {
+                            luna.isTriggered = true;
+                            luna.isVisible = false; 
+                            
+                            triggerJumpscare(LUNA_JUMPSCARE_URL);
+                        }
+                    }
+                }
+                
+                if (luna.isVisible) {
+                    const lunaWorldX = luna.appearanceDistance + LUNA_WORLD_OFFSET;
+                    const calculatedScreenX = player.x + (lunaWorldX - player.totalDistance) * SCREEN_SCROLL_SCALE;
+                    luna.x = calculatedScreenX; 
+                }
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (bgImg) {
+                const bgCanvasWidth = canvas.height * (bgImg.width / bgImg.height);
+                ctx.drawImage(bgImg, bgScrollX, 0, bgCanvasWidth, canvas.height);
+                ctx.drawImage(bgImg, bgScrollX + bgCanvasWidth, 0, bgCanvasWidth, canvas.height);
+            }
+
+            if (luna.img && luna.isVisible && !luna.isTriggered) {
+                ctx.drawImage(luna.img, luna.x, luna.y, luna.width, luna.height);
+            }
+
+            if (idleImg) {
+                if (player.width === 0) {
+                    resizeCanvas();
+                }
+
+                let img;
+                if (player.isMoving) {
+                    if (player.isSprinting) {
+                        img = runImg;
+                    } else {
+                        img = walkFrames[Math.floor(player.walkFrame)];
+                    }
+                } else {
+                    img = idleImg;
+                }
+                
+                ctx.save();
+                
+                let scaleX = player.direction;
+                ctx.translate(player.x + (player.width / 2), player.y + (player.height / 2));
+                ctx.scale(scaleX, 1);
+                
+                ctx.drawImage(img, -player.width / 2, -player.height / 2, player.width, player.height);
+                
+                ctx.restore();
+            }
+        }
+        
+        function triggerJumpscare(imageUrl) {
+            isPlaying = false;
+            
+            jumpscareArea.classList.remove('hidden');
+            jumpscareContent.classList.remove('hidden');
+            
+            document.getElementById('scare-image').src = imageUrl;
+            
+            playJumpscareSound(); 
+
+            setTimeout(resetGame, JUMPSCARE_DURATION_MS); 
+        }
+
+        function resetGame() {
+            jumpscareArea.classList.add('hidden');
+            jumpscareContent.classList.add('hidden'); 
+            
+            uiOverlay.classList.remove('hidden');
+            
+            uiOverlay.classList.remove('menu-bg-style'); 
+            uiOverlay.classList.add('gameover-bg-style');
+            
+            messageElement.classList.add('hidden');
+
+            startButton.textContent = "JOGAR"; 
+            startButton.classList.remove('hidden');
+        }
+        
+        startButton.addEventListener('click', startGame);
+
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            keys[key] = true;
+            
+            if (e.key === 'Shift') {
+                player.isSprinting = true;
+            }
+            
+            if (['ArrowLeft', 'ArrowRight', 'a', 'd', 'Shift'].includes(e.key)) {
+                e.preventDefault();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            keys[key] = false;
+            
+            if (e.key === 'Shift') {
+                player.isSprinting = false;
+            }
+        });
+        
+        window.onload = initImages;
+
+    </script>
+</body>
+</html>
